@@ -169,8 +169,8 @@
             <div class="card">
                 <h2 style="margin-bottom: 1.5rem; text-align: center;">Secure Login</h2>
                 
-                <label style="font-size: 0.875rem; color: #94a3b8; display: block; margin-bottom: 0.5rem;">Private Key (nsec)</label>
-                <input type="password" id="nsec-input" placeholder="nsec1..." autocomplete="off">
+                <label style="font-size: 0.875rem; color: #94a3b8; display: block; margin-bottom: 0.5rem;">Private Key</label>
+                <input type="password" id="nsec-input" placeholder="nsec1... OR hex key" autocomplete="off">
                 
                 <label style="font-size: 0.875rem; color: #94a3b8; display: block; margin-bottom: 0.5rem;">Relay URL</label>
                 <input type="text" id="relay-input" value="wss://relay.damus.io">
@@ -221,7 +221,7 @@
         
         // State
         let pool = new SimplePool();
-        let myPrivKey = null; // Uint8Array or Hex depending on version
+        let myPrivKey = null; // Uint8Array (Always bytes for v2)
         let myPubKey = null;  // Hex String
         let currentRelay = "";
         const seenIds = new Set();
@@ -240,29 +240,48 @@
             recpInput: document.getElementById('recipient-input')
         };
 
+        // Helper: Hex String -> Uint8Array
+        function hexToBytes(hex) {
+            if (hex.length % 2 !== 0) throw new Error("Invalid hex length");
+            const bytes = new Uint8Array(hex.length / 2);
+            for (let i = 0; i < hex.length; i += 2) {
+                bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+            }
+            return bytes;
+        }
+
         // 1. Login Handler
         ui.connectBtn.addEventListener('click', async () => {
             ui.error.innerText = "";
-            const nsec = ui.nsec.value.trim();
+            const inputKey = ui.nsec.value.trim();
             currentRelay = ui.relay.value.trim();
 
-            if (!nsec) return ui.error.innerText = "Private key required";
+            if (!inputKey) return ui.error.innerText = "Private key required";
 
             try {
-                // Decode nsec
-                const { type, data } = nip19.decode(nsec);
-                if (type !== 'nsec') throw new Error("Key must be an nsec");
-                
-                myPrivKey = data;
-                
-                // Handle key format differences between versions
-                // v1 returns hex string, v2 returns Uint8Array
-                if (typeof myPrivKey === 'string') {
-                    myPubKey = getPublicKey(myPrivKey); 
+                // DETECT KEY TYPE
+                if (inputKey.startsWith('nsec1')) {
+                    // Handle Bech32 (nsec)
+                    const { type, data } = nip19.decode(inputKey);
+                    if (type !== 'nsec') throw new Error("Key must be an nsec");
+                    myPrivKey = data; 
                 } else {
-                    myPubKey = getPublicKey(myPrivKey);
+                    // Handle Hex
+                    // Clean input
+                    const cleanHex = inputKey.replace(/^0x/, '');
+                    if (!/^[0-9a-fA-F]{64}$/.test(cleanHex)) {
+                        throw new Error("Invalid Hex Key: Must be 64 hex characters");
+                    }
+                    myPrivKey = hexToBytes(cleanHex);
+                }
+                
+                // Ensure myPrivKey is Uint8Array (NostrTools v2 Requirement)
+                if (typeof myPrivKey === 'string') {
+                    myPrivKey = hexToBytes(myPrivKey);
                 }
 
+                // Derive Pubkey
+                myPubKey = getPublicKey(myPrivKey);
                 console.log("Logged in:", myPubKey);
 
                 // Connect
