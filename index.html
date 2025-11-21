@@ -3,394 +3,398 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nostr NIP-17 DM Client</title>
-    <!-- 1. Tailwind CSS for styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>NIP-17 DM Client (Local)</title>
     <style>
-        /* Simple scrollbar for chat */
-        #chat-history::-webkit-scrollbar { width: 4px; }
-        #chat-history::-webkit-scrollbar-thumb { background-color: #4b5563; border-radius: 20px; }
+        :root {
+            --bg-color: #0f172a;
+            --panel-color: #1e293b;
+            --text-color: #e2e8f0;
+            --accent-color: #8b5cf6;
+            --accent-hover: #7c3aed;
+            --border-color: #334155;
+            --error-color: #ef4444;
+            --success-color: #22c55e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Layout */
+        header {
+            padding: 1rem;
+            background-color: var(--panel-color);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Components */
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: var(--bg-color);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            color: white;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+
+        input:focus, textarea:focus {
+            outline: 2px solid var(--accent-color);
+            border-color: transparent;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.2s;
+        }
+
+        button:hover { background-color: var(--accent-hover); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* Chat Area */
+        #chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .msg {
+            max-width: 80%;
+            padding: 0.75rem 1rem;
+            border-radius: 1rem;
+            line-height: 1.5;
+            word-wrap: break-word;
+            position: relative;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .msg.inbound {
+            background-color: var(--panel-color);
+            align-self: flex-start;
+            border-bottom-left-radius: 0;
+        }
+
+        .msg.outbound {
+            background-color: var(--accent-color);
+            align-self: flex-end;
+            border-bottom-right-radius: 0;
+        }
+
+        .msg-meta {
+            font-size: 0.75rem;
+            opacity: 0.7;
+            margin-top: 0.25rem;
+            display: block;
+        }
+
+        /* Login Overlay */
+        #login-modal {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(15, 23, 42, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .card {
+            background-color: var(--panel-color);
+            padding: 2rem;
+            border-radius: 1rem;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .hidden { display: none !important; }
+        .error-text { color: var(--error-color); font-size: 0.875rem; margin-top: 0.5rem; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="bg-gray-900 text-gray-200 font-sans antialiased">
+<body>
 
-    <div class="container mx-auto max-w-2xl p-4 md:p-8">
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-center text-purple-400">Nostr NIP-17 DM Client</h1>
-            <p class="text-center text-gray-400">Encrypted DMs using NIP-59 Gift Wraps</p>
-        </header>
+    <header>
+        <div style="font-weight: bold; font-size: 1.2rem;">NIP-17 DM</div>
+        <div id="status-indicator" style="color: var(--error-color); font-size: 0.9rem;">Disconnected</div>
+    </header>
 
-        <!-- Login Section -->
-        <section id="login-section" class="bg-gray-800 p-6 rounded-lg shadow-xl mb-6">
-            <h2 class="text-xl font-semibold mb-4">Connect to a Relay</h2>
-            <div class="space-y-4">
-                <div>
-                    <label for="nsec" class="block text-sm font-medium text-gray-300 mb-1">Your `nsec` private key</label>
-                    <input type="password" id="nsec" class="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-gray-200 focus:ring-2 focus:ring-purple-500 focus:outline-none" placeholder="nsec1...">
+    <main>
+        <!-- Login Modal -->
+        <div id="login-modal">
+            <div class="card">
+                <h2 style="margin-bottom: 1.5rem; text-align: center;">Secure Login</h2>
+                
+                <label style="font-size: 0.875rem; color: #94a3b8; display: block; margin-bottom: 0.5rem;">Private Key (nsec)</label>
+                <input type="password" id="nsec-input" placeholder="nsec1..." autocomplete="off">
+                
+                <label style="font-size: 0.875rem; color: #94a3b8; display: block; margin-bottom: 0.5rem;">Relay URL</label>
+                <input type="text" id="relay-input" value="wss://relay.damus.io">
+
+                <button id="connect-btn" style="width: 100%;">Connect</button>
+                <div id="login-error" class="error-text"></div>
+                <div style="margin-top: 1rem; font-size: 0.75rem; color: #64748b; text-align: center;">
+                    Keys stay in your browser. <br> Powered by local ./nostr-tools.js
                 </div>
-                <div>
-                    <label for="relay" class="block text-sm font-medium text-gray-300 mb-1">Relay URL</label>
-                    <input type="text" id="relay" class="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-gray-200 focus:ring-2 focus:ring-purple-500 focus:outline-none" value="wss://relay.damus.io">
-                </div>
-                <button id="connect-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">Connect</button>
             </div>
-        </section>
+        </div>
 
-        <!-- Chat Section (hidden by default) -->
-        <section id="chat-section" class="hidden">
-            <!-- Status & Info -->
-            <div class="bg-gray-800 p-4 rounded-lg shadow-xl mb-6">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-green-400 font-medium">Connected</span>
-                    <button id="disconnect-btn" class="text-sm bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-md transition-colors duration-200">Disconnect</button>
-                </div>
-                <div class="text-sm text-gray-400 break-all">
-                    <p><strong>Relay:</strong> <span id="relay-status"></span></p>
-                    <p><strong>My Pubkey:</strong> <span id="pubkey-status"></span></p>
+        <!-- Chat Interface -->
+        <div class="container">
+            <div id="chat-history">
+                <div style="text-align: center; color: #64748b; margin-top: 2rem;">
+                    Ready to receive encrypted messages.
                 </div>
             </div>
 
-            <!-- Message Area -->
-            <div class="bg-gray-800 p-6 rounded-lg shadow-xl">
-                <h2 class="text-xl font-semibold mb-4">Send Message</h2>
-                <div>
-                    <label for="recipient-npub" class="block text-sm font-medium text-gray-300 mb-1">Recipient `npub`</label>
-                    <input type="text" id="recipient-npub" class="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-gray-200 focus:ring-2 focus:ring-purple-500 focus:outline-none" placeholder="npub1...">
-                </div>
-                <div class="mt-4">
-                    <label for="message-text" class="block text-sm font-medium text-gray-300 mb-1">Message</label>
-                    <textarea id="message-text" rows="3" class="w-full bg-gray-700 border-gray-600 rounded-md p-2 text-gray-200 focus:ring-2 focus:ring-purple-500 focus:outline-none" placeholder="Your encrypted message..."></textarea>
-                </div>
-                <button id="send-btn" class="w-full mt-4 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">Send Encrypted DM</button>
-            </div>
-
-            <!-- History -->
-            <div class="mt-6">
-                <h2 class="text-xl font-semibold mb-4">Message History</h2>
-                <div id="chat-history" class="bg-gray-800 h-96 p-4 rounded-lg shadow-inner overflow-y-auto space-y-4">
-                    <!-- Messages will be injected here -->
-                    <div id="status-log" class="text-gray-500 italic text-center p-4">Awaiting messages...</div>
+            <div style="padding: 1rem; background-color: var(--panel-color); border-top: 1px solid var(--border-color);">
+                <input type="text" id="recipient-input" placeholder="Recipient npub1..." style="margin-bottom: 0.5rem;">
+                <div style="display: flex; gap: 0.5rem;">
+                    <textarea id="msg-input" rows="1" placeholder="Type a message..." style="margin-bottom: 0; resize: none;"></textarea>
+                    <button id="send-btn">Send</button>
                 </div>
             </div>
+        </div>
+    </main>
 
-        </section>
-    </div>
-
-    <!--
-      2. The NostrTools library.
-      This is the "single file library" you mentioned.
-      To make this app fully self-contained and run locally without a CDN, do this:
-      1. Open this URL in your browser: https://unpkg.com/nostr-tools@latest/lib/nostr.js
-      2. Save the file as "nostr.js" in the same directory as this index.html file.
-      3. Change the <script> tag below to: <script src="./nostr.js"></script>
+    <!-- 
+      CRITICAL: We use type="module" to allow imports.
+      We import from the local file "./nostr-tools.js".
     -->
-    <script src="https://unpkg.com/nostr-tools@latest/lib/nostr.js"></script>
+    <script type="module">
+        // ---------------------------------------------------------
+        // IMPORT LOGIC
+        // ---------------------------------------------------------
+        // We try to import everything from the local file.
+        // Depending on how the bundle was built, exports might be named or default.
+        import * as NostrLib from './nostr-tools.js';
 
-    <script>
-        // --- Globals ---
-        let ws = null;
-        let ourPrivKeyHex = null;
-        let ourPubKeyHex = null;
-        const nostr = window.NostrTools;
+        // Helper to handle different bundle types (ESM vs UMD)
+        const Tools = NostrLib.default || NostrLib;
 
-        // --- DOM Elements ---
-        const loginSection = document.getElementById('login-section');
-        const chatSection = document.getElementById('chat-section');
-        const connectBtn = document.getElementById('connect-btn');
-        const disconnectBtn = document.getElementById('disconnect-btn');
-        const sendBtn = document.getElementById('send-btn');
-        const relayStatus = document.getElementById('relay-status');
-        const pubkeyStatus = document.getElementById('pubkey-status');
-        const chatHistory = document.getElementById('chat-history');
-        const statusLog = document.getElementById('status-log');
-        const nsecInput = document.getElementById('nsec');
-        const relayInput = document.getElementById('relay');
-        const recipientInput = document.getElementById('recipient-npub');
-        const messageInput = document.getElementById('message-text');
+        // Basic check to see if library loaded
+        if (!Tools || !Tools.SimplePool) {
+            document.getElementById('login-error').innerText = "Error: ./nostr-tools.js loaded but seems invalid. Ensure it is a bundle.";
+            console.error("Loaded module:", NostrLib);
+        }
 
-        // --- Event Listeners ---
-        connectBtn.addEventListener('click', connect);
-        disconnectBtn.addEventListener('click', disconnect);
-        sendBtn.addEventListener('click', sendMessage);
+        // Destructure what we need
+        const { nip19, nip59, SimplePool, getPublicKey, finalizeEvent } = Tools;
 
-        // --- Core Functions ---
+        // ---------------------------------------------------------
+        // APP LOGIC
+        // ---------------------------------------------------------
+        
+        // State
+        let pool = new SimplePool();
+        let myPrivKey = null; // Uint8Array
+        let myPubKey = null;  // Hex String
+        let currentRelay = "";
+        const seenIds = new Set();
 
-        /**
-         * Connects to the relay, authenticates, and subscribes to DMs.
-         */
-        function connect() {
-            const nsec = nsecInput.value.trim();
-            const relayUrl = relayInput.value.trim();
+        // DOM
+        const ui = {
+            modal: document.getElementById('login-modal'),
+            connectBtn: document.getElementById('connect-btn'),
+            nsec: document.getElementById('nsec-input'),
+            relay: document.getElementById('relay-input'),
+            error: document.getElementById('login-error'),
+            status: document.getElementById('status-indicator'),
+            history: document.getElementById('chat-history'),
+            sendBtn: document.getElementById('send-btn'),
+            msgInput: document.getElementById('msg-input'),
+            recpInput: document.getElementById('recipient-input')
+        };
 
-            if (!nsec || !relayUrl) {
-                logMessage('error', 'Please provide both an nsec key and a relay URL.');
-                return;
-            }
+        // 1. Login Handler
+        ui.connectBtn.addEventListener('click', async () => {
+            ui.error.innerText = "";
+            const nsec = ui.nsec.value.trim();
+            currentRelay = ui.relay.value.trim();
+
+            if (!nsec) return ui.error.innerText = "Private key required";
 
             try {
-                // 1. Get keys from nsec
-                let { type, data } = nostr.nip19.decode(nsec);
-                if (type !== 'nsec') {
-                    throw new Error('Invalid nsec key.');
-                }
-                ourPrivKeyHex = data;
-                ourPubKeyHex = nostr.getPublicKey(ourPrivKeyHex);
-
-                // 2. Connect to WebSocket
-                ws = new WebSocket(relayUrl);
-                ws.onopen = () => onRelayOpen(relayUrl);
-                ws.onmessage = (e) => onRelayMessage(e);
-                ws.onerror = (e) => onRelayError(e);
-                ws.onclose = () => onRelayClose();
+                // Decode nsec
+                const { type, data } = nip19.decode(nsec);
+                if (type !== 'nsec') throw new Error("Key must be an nsec");
                 
-                logMessage('info', `Connecting to ${relayUrl}...`);
-                connectBtn.disabled = true;
-                connectBtn.textContent = 'Connecting...';
+                myPrivKey = data;
+                myPubKey = getPublicKey(myPrivKey);
 
-            } catch (error) {
-                logMessage('error', `Connection failed: ${error.message}`);
-                console.error(error);
+                console.log("Logged in:", myPubKey);
+
+                // Connect
+                ui.connectBtn.innerText = "Connecting...";
+                ui.connectBtn.disabled = true;
+
+                startListener();
+
+                // Update UI
+                ui.modal.classList.add('hidden');
+                ui.status.innerText = "Connected";
+                ui.status.style.color = "var(--success-color)";
+
+            } catch (e) {
+                console.error(e);
+                ui.error.innerText = e.message;
+                ui.connectBtn.innerText = "Connect";
+                ui.connectBtn.disabled = false;
             }
-        }
+        });
 
-        /**
-         * Cleans up the WebSocket connection and resets the UI.
-         */
-        function disconnect() {
-            if (ws) {
-                ws.close();
-            }
-            resetUI();
-            logMessage('info', 'Disconnected.');
-        }
+        // 2. Message Listener (NIP-17 / Kind 1059)
+        function startListener() {
+            const since = Math.floor(Date.now() / 1000) - (24 * 60 * 60); // 24 hours
 
-        /**
-         * Resets the UI to the login state.
-         */
-        function resetUI() {
-            loginSection.classList.remove('hidden');
-            chatSection.classList.add('hidden');
-            connectBtn.disabled = false;
-            connectBtn.textContent = 'Connect';
-            chatHistory.innerHTML = '<div id="status-log" class="text-gray-500 italic text-center p-4">Awaiting messages...</div>';
-            ourPrivKeyHex = null;
-            ourPubKeyHex = null;
-        }
-
-        /**
-         * Called when the WebSocket connection is open.
-         */
-        function onRelayOpen(relayUrl) {
-            logMessage('success', `Connected to ${relayUrl}. Subscribing to DMs...`);
-            
-            // Update UI
-            loginSection.classList.add('hidden');
-            chatSection.classList.remove('hidden');
-            relayStatus.textContent = relayUrl;
-            pubkeyStatus.textContent = `${nostr.nip19.npubEncode(ourPubKeyHex).substring(0, 16)}...`;
-
-            // Subscribe to NIP-17 DMs (Kind 1059 Gift Wraps)
-            const subId = `nip17-dms-${Math.random().toString(36).substring(2)}`;
-            const filter = {
-                kinds: [1059], // NIP-59 Gift Wrap
-                "#p": [ourPubKeyHex],
-                since: Math.floor(Date.now() / 1000) - 86400 // Last 24 hours
-            };
-            ws.send(JSON.stringify(["REQ", subId, filter]));
-            logMessage('info', `Subscribed to new DMs (kind 1059) for our pubkey.`);
-        }
-
-        /**
-         * Called on WebSocket close.
-         */
-        function onRelayClose() {
-            logMessage('error', 'Connection to relay lost. Please reconnect.');
-            resetUI();
-        }
-
-        /**
-         * Called on WebSocket error.
-         */
-        function onRelayError(error) {
-            logMessage('error', 'WebSocket error. See console for details.');
-            console.error('WebSocket Error:', error);
-            connectBtn.disabled = false;
-            connectBtn.textContent = 'Connect';
-        }
-
-        /**
-         * Handles all incoming messages from the relay.
-         */
-        async function onRelayMessage(event) {
-            try {
-                const [type, subId, eventData] = JSON.parse(event.data);
-
-                if (type === "EVENT" && eventData.kind === 1059) {
-                    logMessage('info', 'Received a new Gift Wrap (kind 1059). Trying to decrypt...');
-                    
-                    // NIP-17 specifies unrwapping the gift wrap.
-                    // nostr.nip59.unwrap handles the full NIP-59/NIP-44 decryption flow.
-                    // It decrypts the gift wrap, finds the seal (kind 13), decrypts the seal,
-                    // and returns the inner rumor (kind 14).
-                    // It also verifies the seal's pubkey matches the rumor's pubkey.
-                    const rumor = await nostr.nip59.unwrap(eventData, ourPrivKeyHex);
-
-                    // We only care about Kind 14 (Chat Message)
-                    if (rumor.kind === 14) {
-                        const senderNpub = nostr.nip19.npubEncode(rumor.pubkey);
-                        logMessage('success', `Decrypted message from ${senderNpub.substring(0, 10)}...`);
-                        
-                        addMessageToUI(rumor.content, senderNpub, 'inbound');
+            pool.subscribeMany(
+                [currentRelay],
+                [
+                    { kinds: [1059], "#p": [myPubKey], since: since }
+                ],
+                {
+                    onevent(event) {
+                        processGiftWrap(event);
                     }
-                } else if (type === "OK") {
-                    logMessage('info', `Relay said: ${event.data}`);
-                } else if (type === "NOTICE") {
-                     logMessage('error', `Relay NOTICE: ${event.data}`);
                 }
-
-            } catch (error) {
-                logMessage('error', `Failed to decrypt or handle message: ${error.message}`);
-                console.error(error);
-            }
+            );
         }
 
-        /**
-         * Encrypts and sends a NIP-17 DM.
-         */
-        async function sendMessage() {
-            const messageText = messageInput.value;
-            const recipientNpub = recipientInput.value.trim();
-
-            if (!messageText || !recipientNpub) {
-                logMessage('error', 'Please provide a recipient npub and a message.');
-                return;
-            }
+        // 3. Process Incoming NIP-17
+        async function processGiftWrap(wrap) {
+            if (seenIds.has(wrap.id)) return;
+            seenIds.add(wrap.id);
 
             try {
-                sendBtn.disabled = true;
-                sendBtn.textContent = 'Encrypting...';
+                // NIP-59 Unwrap logic
+                const rumor = await nip59.unwrap(wrap, myPrivKey);
 
-                // 1. Decode recipient key
-                let { type, data: recipientPubKeyHex } = nostr.nip19.decode(recipientNpub);
-                if (type !== 'npub') {
-                    throw new Error('Invalid recipient npub key.');
+                if (rumor.kind === 14) {
+                    const isMe = rumor.pubkey === myPubKey;
+                    // If I sent it (sync), the 'p' tag is the recipient. 
+                    // If I received it, the pubkey is the sender.
+                    const otherParty = isMe 
+                        ? rumor.tags.find(t => t[0] === 'p')?.[1] 
+                        : rumor.pubkey;
+                    
+                    addMessageToUi(rumor.content, isMe, otherParty, rumor.created_at);
                 }
-
-                // 2. Create the "rumor" (the inner, unsigned Kind 14 event)
-                // As per NIP-17, the rumor is unsigned but contains our pubkey.
-                const rumor = nostr.nip59.createRumor({
-                    pubkey: ourPubKeyHex,
-                    kind: 14,
-                    content: messageText,
-                    tags: [['p', recipientPubKeyHex]]
-                });
-
-                // 3. "Wrap" the rumor for the recipient.
-                // nostr.nip59.wrap handles the full NIP-59/NIP-44 flow:
-                // - Creates a seal (kind 13)
-                // - Encrypts the rumor *to* the seal (NIP-44)
-                // - Signs the seal
-                // - Creates a gift wrap (kind 1059)
-                // - Encrypts the seal *to* the gift wrap (NIP-44)
-                // - Signs the gift wrap
-                //
-                // 'p' is the sender's private key (for signing the seal)
-                // 'pubkey' is the recipient's public key (for encryption)
-                const giftWrap = await nostr.nip59.wrap(rumor, {
-                    p: ourPrivKeyHex,
-                    pubkey: recipientPubKeyHex
-                });
-
-                // 4. Send the event to the relay
-                ws.send(JSON.stringify(["EVENT", giftWrap]));
-                logMessage('info', `Sent gift wrap (kind 1059) to ${recipientNpub.substring(0, 10)}...`);
-                
-                // 5. As per NIP-17, we must also send a copy to ourselves
-                // so we can read our own message history.
-                const selfGiftWrap = await nostr.nip59.wrap(rumor, {
-                    p: ourPrivKeyHex,
-                    pubkey: ourPubKeyHex // Encrypt to our *own* pubkey
-                });
-                
-                ws.send(JSON.stringify(["EVENT", selfGiftWrap]));
-                logMessage('info', `Sent self-encrypted copy of message.`);
-
-                // 6. Add to our local UI
-                addMessageToUI(messageText, 'You', 'outbound');
-                messageInput.value = '';
-
-            } catch (error) {
-                logMessage('error', `Failed to send message: ${error.message}`);
-                console.error(error);
-            } finally {
-                sendBtn.disabled = false;
-                sendBtn.textContent = 'Send Encrypted DM';
+            } catch (err) {
+                console.warn("Failed to decrypt wrap:", err);
             }
         }
 
+        // 4. Send Message Handler
+        ui.sendBtn.addEventListener('click', async () => {
+            const text = ui.msgInput.value.trim();
+            const recipientNpub = ui.recpInput.value.trim();
 
-        // --- UI Helper Functions ---
+            if (!text || !recipientNpub) return alert("Message and Recipient required");
 
-        /**
-         * Logs a message to the chat history.
-         * @param {'info'|'success'|'error'} type
-         * @param {string} message
-         */
-        function logMessage(type, message) {
-            const colors = {
-                info: 'text-gray-500',
-                success: 'text-green-500',
-                error: 'text-red-500'
-            };
-            if (statusLog) statusLog.remove();
+            try {
+                ui.sendBtn.disabled = true;
+                ui.sendBtn.innerText = "...";
+
+                const { type, data: receiverHex } = nip19.decode(recipientNpub);
+                if (type !== 'npub') throw new Error("Recipient must be npub");
+
+                // Create Rumor (Unsigned Kind 14)
+                const rumor = {
+                    kind: 14,
+                    pubkey: myPubKey,
+                    content: text,
+                    created_at: Math.floor(Date.now() / 1000),
+                    tags: [['p', receiverHex]]
+                };
+
+                // 1. Wrap for them
+                const theirWrap = await nip59.giftWrap(receiverHex, rumor, myPrivKey);
+                
+                // 2. Wrap for me (Sync)
+                const myWrap = await nip59.giftWrap(myPubKey, rumor, myPrivKey);
+
+                // Publish
+                await Promise.any(pool.publish([currentRelay], theirWrap));
+                pool.publish([currentRelay], myWrap); // Fire and forget sync
+
+                // UI Update
+                ui.msgInput.value = "";
+                ui.sendBtn.disabled = false;
+                ui.sendBtn.innerText = "Send";
+                
+                // Optimistic Add
+                addMessageToUi(text, true, receiverHex, Date.now()/1000);
+
+            } catch (err) {
+                alert("Send failed: " + err.message);
+                ui.sendBtn.disabled = false;
+                ui.sendBtn.innerText = "Send";
+            }
+        });
+
+        // UI Helpers
+        function addMessageToUi(text, isMe, otherHex, timestamp) {
+            const div = document.createElement('div');
+            div.className = `msg ${isMe ? 'outbound' : 'inbound'}`;
             
-            const logEl = document.createElement('div');
-            logEl.className = `italic text-sm ${colors[type] || 'text-gray-500'}`;
-            logEl.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            chatHistory.appendChild(logEl);
-            chatHistory.scrollTop = chatHistory.scrollHeight; // Auto-scroll
-        }
+            const name = isMe ? "You" : (nip19.npubEncode(otherHex).slice(0, 8) + "...");
+            const time = new Date(timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
-        /**
-         * Adds a formatted chat message to the UI.
-         * @param {string} content
-         * @param {string} author - 'You' or the sender's npub
-         * @param {'inbound'|'outbound'} direction
-         */
-        function addMessageToUI(content, author, direction) {
-            if (statusLog) statusLog.remove();
-
-            const isOutbound = direction === 'outbound';
-            const authorShort = author === 'You' ? 'You' : `${author.substring(0, 12)}...`;
-
-            const messageEl = document.createElement('div');
-            messageEl.className = `flex flex-col ${isOutbound ? 'items-end' : 'items-start'}`;
-            
-            messageEl.innerHTML = `
-                <div class="text-xs text-gray-400 mb-1 ${isOutbound ? 'text-right' : 'text-left'}">${authorShort}</div>
-                <div class="max-w-xs md:max-w-md p-3 rounded-lg ${isOutbound ? 'bg-purple-700 text-white' : 'bg-gray-700'}">
-                    <p class="whitespace-pre-wrap break-words">${escapeHTML(content)}</p>
-                </div>
+            div.innerHTML = `
+                ${escapeHtml(text)}
+                <span class="msg-meta">${name} • ${time}</span>
             `;
-            chatHistory.appendChild(messageEl);
-            chatHistory.scrollTop = chatHistory.scrollHeight; // Auto-scroll
+
+            ui.history.appendChild(div);
+            ui.history.scrollTop = ui.history.scrollHeight;
         }
 
-        /**
-         * Basic HTML escaping to prevent XSS.
-         */
-        function escapeHTML(str) {
-            return str.replace(/[&<>"']/g, function(m) {
-                return {
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#39;'
-                }[m];
-            });
+        function escapeHtml(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
-
     </script>
 </body>
 </html>
