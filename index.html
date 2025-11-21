@@ -149,6 +149,12 @@
         
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
+
+    <!-- 
+        LOAD LIBRARY GLOBALLY 
+        This creates 'window.NostrTools'
+    -->
+    <script src="./nostr-tools.js"></script>
 </head>
 <body>
 
@@ -195,29 +201,19 @@
         </div>
     </main>
 
-    <!-- 
-      CRITICAL: We use type="module" to allow imports.
-      We import from the local file "./nostr-tools.js".
-    -->
-    <script type="module">
+    <script>
         // ---------------------------------------------------------
-        // IMPORT LOGIC
+        // INITIALIZATION
         // ---------------------------------------------------------
-        // We try to import everything from the local file.
-        // Depending on how the bundle was built, exports might be named or default.
-        import * as NostrLib from './nostr-tools.js';
-
-        // Helper to handle different bundle types (ESM vs UMD)
-        const Tools = NostrLib.default || NostrLib;
-
-        // Basic check to see if library loaded
-        if (!Tools || !Tools.SimplePool) {
-            document.getElementById('login-error').innerText = "Error: ./nostr-tools.js loaded but seems invalid. Ensure it is a bundle.";
-            console.error("Loaded module:", NostrLib);
+        
+        // Check if the script loaded correctly
+        if (!window.NostrTools) {
+            document.getElementById('login-error').innerText = "Critical Error: window.NostrTools is undefined. \n\nPlease ensure 'nostr-tools.js' is the BROWSER BUNDLE version.";
+            throw new Error("NostrTools not found");
         }
 
-        // Destructure what we need
-        const { nip19, nip59, SimplePool, getPublicKey, finalizeEvent } = Tools;
+        // Extract tools from global object
+        const { nip19, nip59, SimplePool, getPublicKey } = window.NostrTools;
 
         // ---------------------------------------------------------
         // APP LOGIC
@@ -225,12 +221,12 @@
         
         // State
         let pool = new SimplePool();
-        let myPrivKey = null; // Uint8Array
+        let myPrivKey = null; // Uint8Array or Hex depending on version
         let myPubKey = null;  // Hex String
         let currentRelay = "";
         const seenIds = new Set();
 
-        // DOM
+        // DOM Elements
         const ui = {
             modal: document.getElementById('login-modal'),
             connectBtn: document.getElementById('connect-btn'),
@@ -258,7 +254,14 @@
                 if (type !== 'nsec') throw new Error("Key must be an nsec");
                 
                 myPrivKey = data;
-                myPubKey = getPublicKey(myPrivKey);
+                
+                // Handle key format differences between versions
+                // v1 returns hex string, v2 returns Uint8Array
+                if (typeof myPrivKey === 'string') {
+                    myPubKey = getPublicKey(myPrivKey); 
+                } else {
+                    myPubKey = getPublicKey(myPrivKey);
+                }
 
                 console.log("Logged in:", myPubKey);
 
@@ -375,7 +378,13 @@
             const div = document.createElement('div');
             div.className = `msg ${isMe ? 'outbound' : 'inbound'}`;
             
-            const name = isMe ? "You" : (nip19.npubEncode(otherHex).slice(0, 8) + "...");
+            let name = "Unknown";
+            try {
+                name = isMe ? "You" : (nip19.npubEncode(otherHex).slice(0, 8) + "...");
+            } catch(e) {
+                name = "Unknown";
+            }
+
             const time = new Date(timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
             div.innerHTML = `
